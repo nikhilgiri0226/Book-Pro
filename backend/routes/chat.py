@@ -3,12 +3,12 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from backend.utils.memory_manager import memory_manager
 from backend.utils.rag_pipeline import (
     ChatResult,
     generate_suggestions,
     handle_chat,
 )
+from backend.utils.memory_service import conversation_memory_service
 
 
 class ChatMessage(BaseModel):
@@ -17,19 +17,30 @@ class ChatMessage(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    user_id: str = Field(..., description="Unique identifier for the user/session.")
-    message: str = Field(..., description="User message for the assistant.")
+    query: str = Field(..., description="User message for the assistant.")
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Optional identifier to persist conversation context across requests.",
+    )
+
+
+class SourceItem(BaseModel):
+    source: Optional[str]
+    page: Optional[int] = None
+    chunk_id: Optional[str] = None
+    section: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
-    answer: str
+    response: str
     corrected_query: Optional[str] = None
-    sources: List[dict] = Field(default_factory=list)
+    sources: List[SourceItem] = Field(default_factory=list)
     suggestions: List[str] = Field(default_factory=list)
+    query_type: Optional[str] = None
 
 
 class HistoryResponse(BaseModel):
-    user_id: str
+    session_id: str
     history: List[ChatMessage]
 
 
@@ -42,30 +53,34 @@ router = APIRouter()
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
+    session_id = payload.session_id or "default-session"
     try:
-        result: ChatResult = await handle_chat(payload.user_id, payload.message)
+        result: ChatResult = await handle_chat(session_id, payload.query)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     return ChatResponse(
-        answer=result.answer,
+        response=result.response,
         corrected_query=result.corrected_query,
-        sources=result.sources,
+        sources=[SourceItem(**source) for source in result.sources],
         suggestions=result.suggestions,
+        query_type=result.query_type.value if result.query_type else None,
     )
 
 
 @router.get("/history", response_model=HistoryResponse)
-async def history_endpoint(user_id: str = Query(..., description="User/session id")) -> HistoryResponse:
-    history = memory_manager.get_history(user_id)
-    return HistoryResponse(user_id=user_id, history=history)
+async def history_endpoint(
+    session_id: str = Query(..., description="Session identifier to retrieve history for."),
+) -> HistoryResponse:
+    history = conversation_memory_service.load_plain_history(session_id)
+    return HistoryResponse(session_id=session_id, history=history)
 
 
 @router.get("/suggest", response_model=SuggestionResponse)
 async def suggestion_endpoint(
-    user_id: Optional[str] = Query(None, description="Optional user/session id to tailor suggestions."),
+    session_id: Optional[str] = Query(None, description="Optional session id to tailor suggestions."),
     last_query: Optional[str] = Query(None, description="Optional explicit query to base suggestions on."),
 ) -> SuggestionResponse:
-    suggestions = await generate_suggestions(user_id=user_id, query=last_query)
+    suggestions = await generate_suggestions(session_id=session_id, query=last_query)
     return SuggestionResponse(suggestions=suggestions)
 

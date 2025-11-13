@@ -10,12 +10,12 @@ const DEFAULT_SUGGESTIONS = [
   "List key moments from The Two Towers.",
 ];
 
-const getInitialUserId = () => {
+const getInitialSessionId = () => {
   if (typeof window === "undefined") return "local-user";
-  const stored = window.localStorage.getItem("bookMovieChatUserId");
+  const stored = window.localStorage.getItem("bookMovieChatSessionId");
   if (stored) return stored;
   const newId = crypto.randomUUID();
-  window.localStorage.setItem("bookMovieChatUserId", newId);
+  window.localStorage.setItem("bookMovieChatSessionId", newId);
   return newId;
 };
 
@@ -32,10 +32,10 @@ const MessageBubble = ({ message }) => {
             : "bg-white/5 text-gray-100 border border-white/10"
         }`}
       >
-        <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-        {isAssistant && message.correctedQuery && (
+          <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+        {isAssistant && message.corrected_query && (
           <p className="mt-2 text-xs text-accent">
-            Interpreted your question as: <span className="italic">{message.correctedQuery}</span>
+            Interpreted your question as: <span className="italic">{message.corrected_query}</span>
           </p>
         )}
         {isAssistant && message.sources?.length > 0 && (
@@ -61,7 +61,7 @@ const MessageBubble = ({ message }) => {
 };
 
 function App() {
-  const [userId] = useState(getInitialUserId);
+  const [sessionId] = useState(getInitialSessionId);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -71,7 +71,7 @@ function App() {
   useEffect(() => {
     const loadHistory = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/history?user_id=${userId}`);
+        const response = await fetch(`${API_BASE_URL}/history?session_id=${sessionId}`);
         if (!response.ok) {
           throw new Error("Failed to fetch history.");
         }
@@ -84,12 +84,12 @@ function App() {
     };
 
     loadHistory();
-  }, [userId]);
+  }, [sessionId]);
 
   useEffect(() => {
     const loadSuggestions = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/suggest?user_id=${userId}`);
+        const response = await fetch(`${API_BASE_URL}/suggest?session_id=${sessionId}`);
         if (!response.ok) {
           throw new Error("Failed to fetch suggestions.");
         }
@@ -103,7 +103,7 @@ function App() {
     };
 
     loadSuggestions();
-  }, [userId]);
+  }, [sessionId]);
 
   const recentHistory = useMemo(
     () => messages.slice(-10).reverse(),
@@ -126,7 +126,7 @@ function App() {
       const response = await fetch(`${API_BASE_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ user_id: userId, message: trimmed }),
+        body: JSON.stringify({ session_id: sessionId, query: trimmed }),
       });
 
       if (!response.ok) {
@@ -136,9 +136,10 @@ function App() {
       const data = await response.json();
       const assistantMessage = {
         role: "assistant",
-        content: data.answer ?? "I couldn't generate a response this time.",
+        content: data.response ?? "I couldn't generate a response this time.",
         sources: data.sources ?? [],
-        correctedQuery: data.corrected_query ?? "",
+        corrected_query: data.corrected_query ?? "",
+        query_type: data.query_type ?? "",
       };
 
       setMessages((prev) => [...prev, assistantMessage]);

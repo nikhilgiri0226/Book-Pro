@@ -13,7 +13,7 @@ class UploadResponse(BaseModel):
 router = APIRouter()
 
 
-@router.post("/", response_model=UploadResponse)
+@router.post("", response_model=UploadResponse)
 async def upload_pdf(file: UploadFile = File(...)) -> UploadResponse:
     if file.content_type not in {"application/pdf"}:
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
