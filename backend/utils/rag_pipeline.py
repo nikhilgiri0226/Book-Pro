@@ -171,18 +171,20 @@ def _enrich_chunks_with_neighbors(chunks: Sequence[Document], filename: str) -> 
             metadata["prev_chunk_page"] = prev_chunk.metadata.get("page")
             metadata["prev_chunk_text"] = prev_chunk.page_content
         else:
-            metadata["prev_chunk_id"] = None
-            metadata["prev_chunk_page"] = None
-            metadata["prev_chunk_text"] = ""
+            metadata.pop("prev_chunk_id", None)
+            metadata.pop("prev_chunk_page", None)
+            metadata.pop("prev_chunk_text", None)
 
         if next_chunk:
             metadata["next_chunk_id"] = next_chunk.metadata.get("chunk_id")
             metadata["next_chunk_page"] = next_chunk.metadata.get("page")
             metadata["next_chunk_text"] = next_chunk.page_content
         else:
-            metadata["next_chunk_id"] = None
-            metadata["next_chunk_page"] = None
-            metadata["next_chunk_text"] = ""
+            metadata.pop("next_chunk_id", None)
+            metadata.pop("next_chunk_page", None)
+            metadata.pop("next_chunk_text", None)
+
+        _sanitize_metadata(metadata)
 
 
 def _get_active_vector_store():
@@ -338,12 +340,13 @@ def _expand_with_neighbors(docs: Sequence[Document]) -> List[Document]:
             if neighbor_text and neighbor_id not in seen_ids:
                 neighbor_metadata = {
                     "source": doc.metadata.get("source"),
-                    "page": neighbor_page or doc.metadata.get("page"),
+                    "page": neighbor_page if neighbor_page is not None else doc.metadata.get("page"),
                     "section": doc.metadata.get("section"),
                     "chunk_id": neighbor_id,
                     "relation": f"{prefix}_neighbor",
                     "origin_chunk_id": chunk_id,
                 }
+                _sanitize_metadata(neighbor_metadata)
                 expanded.append(Document(page_content=neighbor_text, metadata=neighbor_metadata))
                 seen_ids.add(neighbor_id)
 
@@ -513,4 +516,10 @@ async def reindex_local_pdfs(root_dir: Path) -> Dict[str, object]:
         "total_chunks": total_chunks,
         "files": results,
     }
+
+
+def _sanitize_metadata(metadata: Dict[str, object]) -> None:
+    removable_keys = [key for key, value in metadata.items() if value is None]
+    for key in removable_keys:
+        metadata.pop(key, None)
 
