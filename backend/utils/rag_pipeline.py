@@ -121,10 +121,11 @@ async def ingest_pdf_bytes(filename: str, file_bytes: bytes) -> Dict[str, object
         if not text:
             continue
 
+        images = page.get("images", [])
         metadata = {
             "source": filename,
             "page": page.get("page_number"),
-            "images": page.get("images", []),
+            "image_count": len(images),
         }
         documents.append(Document(page_content=text, metadata=metadata))
 
